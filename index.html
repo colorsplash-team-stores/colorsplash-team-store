@@ -487,7 +487,7 @@ async function placeOrder(){
 }
 
 /* ---------- admin ---------- */
-function storeStats(id){const os=allOrders().filter(o=>o.storeId===id);return{n:os.length,rev:os.reduce((a,o)=>a+(o.total||0),0),fund:os.reduce((a,o)=>a+(o.fundraiser||0),0),unpaid:os.filter(o=>!o.paid).length}}
+function storeStats(id){const os=allOrders().filter(o=>o.storeId===id&&o.status!=="canceled");return{n:os.length,rev:os.reduce((a,o)=>a+(o.total||0),0),fund:os.reduce((a,o)=>a+(o.fundraiser||0),0),unpaid:os.filter(o=>!o.paid).length}}
 function renderAdmin(){
   if(S.editing)return renderEditor();
   if(S.adminStore&&storeById(S.adminStore))return renderStoreAdmin(storeById(S.adminStore));
@@ -503,7 +503,7 @@ function prodSummary(os){
   return m;
 }
 function renderStoreAdmin(s){
-  const os=allOrders().filter(o=>o.storeId===s.id), k=storeStats(s.id), sum=prodSummary(os);
+  const all=allOrders().filter(o=>o.storeId===s.id), os=all.filter(o=>o.status!=="canceled"), k=storeStats(s.id), sum=prodSummary(os);
   const sizes=[...YOUTH,...ADULT].filter(z=>Object.values(sum).some(r=>r[z]));
   const pers=[];for(const o of os)for(const i of o.items)if(i.pname||i.pnum)for(let q=0;q<i.qty;q++)pers.push({...i,player:o.player});
   const link=location.origin+"/s/"+(s.slug||"");
@@ -516,7 +516,7 @@ function renderStoreAdmin(s){
   ${Object.keys(sum).length?supplierLists(s,sum,sizes):""}
   ${pers.length?`<div class="section"><div class="section-h"><h2>Names &amp; numbers</h2><span class="note">${pers.length} personalized pieces</span></div><div class="tbl"><table><thead><tr><th>Item</th><th>Size</th><th>Back name</th><th class="n">#</th><th>Player</th></tr></thead><tbody>${pers.sort((a,b)=>(a.name+a.size).localeCompare(b.name+b.size)).map(p=>`<tr><td>${esc(p.name)}</td><td>${esc(p.size)}</td><td>${esc(p.pname)}</td><td class="n">${esc(p.pnum)}</td><td>${esc(p.player)}</td></tr>`).join("")}</tbody></table></div></div>`:""}
   <div class="section"><div class="section-h"><h2>Orders</h2></div>
-  ${os.length?`<div class="tbl"><table><thead><tr><th>Order</th><th>Player</th><th>Parent</th><th class="n">Total</th><th>Delivery</th><th>Payment</th><th>Status</th></tr></thead><tbody>${os.map(o=>`<tr><td>${esc(o.code)}</td><td>${esc(o.player)}</td><td>${esc(o.parent)}<br><span class="note">${esc(o.email)}</span></td><td class="n">${money(o.total)}</td><td>${o.fulfillment==="ship"?"Ship":"Pickup"}</td><td><button class="pill ${o.paid?"paid":o.payMode==="coach"?"coach":"unpaid"}" style="border:0" data-paid="${o.id}">${o.paid?"Paid":"Mark paid"}</button></td><td><select data-stat="${o.id}" style="width:auto">${["new","printed","ready","delivered"].map(x=>`<option ${o.status===x?"selected":""}>${x}</option>`).join("")}</select></td></tr>`).join("")}</tbody></table></div>`:`<div class="empty">No orders yet. Share the store link with the coach.</div>`}</div>`;
+  ${all.length?`<div class="tbl"><table><thead><tr><th>Order</th><th>Player</th><th>Parent</th><th class="n">Total</th><th>Delivery</th><th>Payment</th><th>Status</th></tr></thead><tbody>${all.map(o=>`<tr><td>${esc(o.code)}</td><td>${esc(o.player)}</td><td>${esc(o.parent)}<br><span class="note">${esc(o.email)}</span></td><td class="n">${money(o.total)}</td><td>${o.fulfillment==="ship"?"Ship":"Pickup"}</td><td><button class="pill ${o.paid?"paid":o.payMode==="coach"?"coach":"unpaid"}" style="border:0" data-paid="${o.id}">${o.paid?"Paid":"Mark paid"}</button></td><td><select data-stat="${o.id}" style="width:auto">${["new","printed","ready","delivered","canceled"].map(x=>`<option ${o.status===x?"selected":""}>${x}</option>`).join("")}</select></td></tr>`).join("")}</tbody></table></div>`:`<div class="empty">No orders yet. Share the store link with the coach.</div>`}</div>`;
 }
 function blankStore(){const d=new Date(),e=new Date(Date.now()+14*864e5);return{id:rid("s-"),name:"",season:"",color:"#1d3557",color2:"#e8b33a",opens:d.toISOString().slice(0,10),closes:e.toISOString().slice(0,10),payMode:"online",payLink:"",fundraiserPct:10,pickup:true,pickupNote:"Pick up at 2403 Santa Fe Drive",ship:false,shipFee:8,products:[]}}
 function blankProduct(){return{id:rid("p-"),name:"",kind:"tee",gColor:"team",price:18,youth:true,adult:true,personalize:false,nameFee:5,numberFee:5,desc:""}}
