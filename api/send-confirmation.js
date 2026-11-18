@@ -12,7 +12,9 @@ const longDate = (d) => (d ? new Date(d + "T12:00:00").toLocaleDateString("en-US
 
 module.exports = async (req, res) => {
   if (req.method !== "POST") return res.status(405).json({ sent: false, error: "method_not_allowed" });
-  const { GMAIL_USER, GMAIL_APP_PASSWORD, SHOP_NOTIFY_EMAIL } = process.env;
+  const GMAIL_USER = (process.env.GMAIL_USER || "").trim();
+  const GMAIL_APP_PASSWORD = (process.env.GMAIL_APP_PASSWORD || "").replace(/\s+/g, "");
+  const SHOP_NOTIFY_EMAIL = (process.env.SHOP_NOTIFY_EMAIL || "").trim();
   if (!GMAIL_USER || !GMAIL_APP_PASSWORD) return res.status(503).json({ sent: false, error: "email_not_configured" });
 
   let body = req.body;
@@ -83,9 +85,19 @@ ${o.closes ? `<p style="margin:0 0 8px">We print everything after the store clos
       text,
       html,
     });
+    console.log("confirmation sent", o.code);
     return res.status(200).json({ sent: true });
   } catch (e) {
-    console.error("send failed", e && e.message);
-    return res.status(500).json({ sent: false, error: "send_failed" });
+    // Error codes like EAUTH carry no secrets; record them so the cause is visible.
+    const why = [e && e.code, e && e.responseCode, e && String(e.response || e.message || "").slice(0, 200)].filter(Boolean).join(" | ");
+    console.error("confirmation send failed", o.code, why);
+    try {
+      await fetch(SB_URL + "/rest/v1/rpc/release_confirmation", {
+        method: "POST",
+        headers: { apikey: SB_KEY, "Content-Type": "application/json" },
+        body: JSON.stringify({ p_code: o.code, p_email: o.email, p_error: why }),
+      });
+    } catch {}
+    return res.status(500).json({ sent: false, error: "send_failed", code: (e && e.code) || null });
   }
 };
