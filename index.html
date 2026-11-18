@@ -182,7 +182,7 @@ tr.total td{font-weight:600}
 </div></header>
 <div class="wrap">
   <main id="app"><div class="empty">Loading stores…</div></main>
-  <footer class="foot"><strong>ColorSplash Uniforms &amp; Embroidery</strong><span>2403 Santa Fe Drive, Pueblo, CO 81006</span><span>719-564-9655</span><a href="https://www.colorsplashuniforms.com/" target="_blank" rel="noopener" style="color:inherit">colorsplashuniforms.com</a></footer>
+  <footer class="foot"><strong>ColorSplash Uniforms &amp; Embroidery</strong><span>2403 Santa Fe Drive, Pueblo, CO 81006</span><span>719-564-9655</span><a href="/order" style="color:inherit">Look up an order</a><a href="https://www.colorsplashuniforms.com/" target="_blank" rel="noopener" style="color:inherit">colorsplashuniforms.com</a></footer>
 </div>
 <div class="cartbar" id="cartbar" hidden>
   <div><div class="lbl" style="color:inherit;opacity:.7" id="cartcount">0 items</div><div class="tot" id="carttot">$0.00</div></div>
@@ -238,6 +238,7 @@ async function checkAdmin(session){
 function resolveRoute(){
   const p=location.pathname;
   if(p.startsWith("/admin")){S.view="admin";return}
+  if(p.startsWith("/order")){S.view="lookup";return}
   S.view="shop";const m=p.match(/^\/s\/([^/]+)/);
   if(m){const st=S.stores.find(x=>x.slug===decodeURIComponent(m[1]));S.storeId=st?st.id:null}
   else{const live=S.stores.filter(x=>!x.archived);S.storeId=live.length===1?live[0].id:null}
@@ -358,6 +359,7 @@ function render(){
   $("#tabs").hidden=!S.canEdit;
   $("#tab-shop").setAttribute("aria-selected",S.view==="shop");
   $("#tab-admin").setAttribute("aria-selected",S.view==="admin");
+  if(S.view==="lookup"){$("#cartbar").hidden=true;app.innerHTML=renderLookup();bindLookup();return}
   if(!S.loaded){app.innerHTML=`<div class="empty">Loading team stores…</div>`;$("#cartbar").hidden=true;return}
   if(S.loadErr){app.innerHTML=`<div class="empty">Couldn't load the team stores. Check your connection and refresh the page.</div>`;$("#cartbar").hidden=true;return}
   if(S.view==="admin"){$("#cartbar").hidden=true;if(S.canEdit){app.innerHTML=renderAdmin();bindAdmin()}else{app.innerHTML=renderLogin();bindLogin()}return}
@@ -436,7 +438,40 @@ function renderDone(){
   return`<div class="panel" style="max-width:560px;margin:20px auto"><span class="lbl">Order placed</span><h2 style="font-size:40px">Thanks, ${esc(order.parent.split(" ")[0])}!</h2>
   <p>Order <strong>${esc(order.code)}</strong> for ${esc(order.player)} is in. We print everything after the store closes on ${fmtDate(s.closes)}.</p>
   ${s.payMode==="online"?(s.payLink?`<p>Pay <strong>${money(order.total)}</strong> to finish your order:</p><a class="btn gold" style="text-decoration:none;text-align:center" href="${esc(s.payLink)}" target="_blank" rel="noopener">Pay ${money(order.total)}</a><p class="note">Use order number ${esc(order.code)} in the payment note.</p>`:`<p class="note">The shop will send you a payment link for ${money(order.total)}.</p>`):`<p class="note">Your coach will collect ${money(order.total)}.</p>`}
+  <p class="note">${S.done.mail==="sent"?`We emailed a confirmation to <strong>${esc(order.email)}</strong>.`:S.done.mail==="sending"?`Sending a confirmation to ${esc(order.email)}…`:`Save your order number. You can look up your order anytime at <a href="/order?code=${encodeURIComponent(order.code)}&email=${encodeURIComponent(order.email)}">Look up an order</a>.`}</p>
   <button class="btn ghost" data-donedone>Back to the store</button></div>`;
+}
+async function sendConfirmation(code,email){
+  let ok=false;
+  try{const r=await fetch("/api/send-confirmation",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({code,email})});const j=await r.json().catch(()=>({}));ok=r.ok&&j.sent}catch{}
+  if(S.done&&S.done.order.code===code){S.done.mail=ok?"sent":"failed";if(S.view==="shop")render()}
+}
+const STATUS_TEXT={new:"Received",printed:"Printed",ready:"Ready for pickup",delivered:"Delivered",canceled:"Canceled"};
+function renderLookup(){
+  const L=S.lookup||{},q=new URLSearchParams(location.search);
+  return`<div class="panel" style="max-width:600px;margin:20px auto"><span class="lbl">Order lookup</span><h2 style="font-size:34px">Find your order</h2>
+  <p class="note">Enter the order number from your confirmation and the email you ordered with.</p>
+  <form id="lkForm" class="row" novalidate style="align-items:end"><label><span class="lbl">Order number</span><input id="lk-code" value="${esc(L.code??q.get("code")??"")}" maxlength="8" autocapitalize="characters" autocomplete="off" placeholder="4E0BD2"></label><label><span class="lbl">Email</span><input id="lk-email" type="email" value="${esc(L.email??q.get("email")??"")}" autocomplete="email"></label><button class="btn gold" type="submit" style="flex:0 0 auto">Look up</button></form>
+  ${L.err?`<div class="err">${esc(L.err)}</div>`:""}${L.order?lookupResult(L.order):""}
+  <a class="back" href="/">← Team stores</a></div>`;
+}
+function lookupResult(o){
+  return`<div class="lines"><div class="row" style="justify-content:space-between;align-items:center"><strong>Order ${esc(o.code)} · ${esc(o.store)}</strong><span class="pill ${o.status==="canceled"?"closed":o.status==="new"?"soon":"open"}" style="flex:0 0 auto">${esc(STATUS_TEXT[o.status]||o.status)}</span></div>
+  ${(o.items||[]).map(i=>`<div class="line"><div><strong>${esc(i.name)}</strong> · ${esc(i.size)}<div class="sub">${i.pname?esc(i.pname):""}${i.pnum?" #"+esc(i.pnum):""}${i.qty>1?" · "+i.qty+" × "+money(i.unit):""}</div></div><div class="num">${money(i.unit*i.qty)}</div></div>`).join("")}
+  <div class="totals">${Number(o.ship)?`<span>Shipping</span><span class="num">${money(o.ship)}</span>`:""}<span class="big">Total</span><span class="big num">${money(o.total)}</span></div>
+  <p>Player: <strong>${esc(o.player)}</strong> · ${o.fulfillment==="ship"?"Shipping to you":"Pickup: "+esc(o.pickup_note||"at the shop")}</p>
+  <p>${o.paid?"Payment received. Thank you!":o.pay_mode==="coach"?"Your coach is collecting payment for the team.":o.pay_link?`Payment due: <a href="${esc(o.pay_link)}" target="_blank" rel="noopener">pay ${money(o.total)}</a> and use order number ${esc(o.code)}.`:"Payment due. The shop will send you a payment link."}</p>
+  ${o.closes&&o.status==="new"?`<p class="note">We print everything after the store closes on ${fmtDate(o.closes)}.</p>`:""}</div>`;
+}
+function bindLookup(){
+  const app=$("#app");app.onclick=null;app.oninput=null;app.onchange=null;
+  const f=$("#lkForm");f.onsubmit=async e=>{e.preventDefault();
+    const code=$("#lk-code").value.trim().toUpperCase(),email=$("#lk-email").value.trim();S.lookup={code,email};
+    if(!code||!/^\S+@\S+\.\S+$/.test(email)){S.lookup.err="Enter your order number and the email you ordered with.";render();return}
+    const b=f.querySelector("button");b.disabled=true;b.textContent="Looking…";
+    const {data,error}=await sb.rpc("find_order",{p_code:code,p_email:email});
+    S.lookup.order=data||null;S.lookup.err=error?"Couldn't look that up. Check your connection and try again.":data?null:"No order matches that order number and email. Check both and try again.";render()};
+  const q=new URLSearchParams(location.search);if(!S.lookup&&q.get("code")&&q.get("email"))f.requestSubmit();
 }
 
 function updateCartbar(){
@@ -483,7 +518,7 @@ async function placeOrder(){
   const btn=$("#coForm button[type=submit]");btn.disabled=true;btn.textContent="Placing order…";
   const {data,error}=await sb.rpc("place_order",{p:payload});
   if(error){btn.disabled=false;btn.textContent="Place order";err.hidden=false;const msg=error.message||"";const k=Object.keys(ORDER_ERR).find(x=>msg.includes(x));err.textContent=k?ORDER_ERR[k]:"The order didn't go through. Check your connection and try again.";return}
-  S.done={order:{code:data.code,total:Number(data.total),parent:payload.parent,player:payload.player},store:s};S.cart=[];S.checkout=false;render();scrollTo(0,0);loadOrders();
+  S.done={order:{code:data.code,total:Number(data.total),parent:payload.parent,player:payload.player,email:payload.email},store:s,mail:"sending"};S.cart=[];S.checkout=false;render();scrollTo(0,0);loadOrders();sendConfirmation(data.code,payload.email);
 }
 
 /* ---------- admin ---------- */

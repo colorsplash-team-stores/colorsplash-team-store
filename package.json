@@ -1,0 +1,7 @@
+{
+  "name": "colorsplash-team-store",
+  "private": true,
+  "dependencies": {
+    "nodemailer": "6.9.16"
+  }
+}
