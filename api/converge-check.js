@@ -28,6 +28,8 @@ module.exports = async (req, res) => {
   const present = { account_id: !!id, user_id: !!user, pin: !!pin, pin_length: pin.length, user_starts_apiuser: /^apiuser/i.test(user) };
   if (!id || !user || !pin) return res.status(200).json({ present, error: "missing settings" });
   const [live, demo] = await Promise.all([tryEnv(ENDPOINTS.live, id, user, pin), tryEnv(ENDPOINTS.demo, id, user, pin)]);
+  let myip = null;
+  try { const r = await fetch("https://api.convergepay.com/hosted-payments/myip"); myip = (await r.text()).trim().slice(0, 60); } catch (e) { myip = "unknown"; }
   res.setHeader("Cache-Control", "no-store");
-  res.status(200).json({ present, live, demo, mode: live.ok ? "live" : demo.ok ? "demo" : "neither" });
+  res.status(200).json({ present, myip, checked_at: new Date().toISOString(), live, demo, mode: live.ok ? "live" : demo.ok ? "demo" : "neither" });
 };
