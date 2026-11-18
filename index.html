@@ -461,10 +461,16 @@ function lookupResult(o){
   <div class="totals">${Number(o.ship)?`<span>Shipping</span><span class="num">${money(o.ship)}</span>`:""}<span class="big">Total</span><span class="big num">${money(o.total)}</span></div>
   <p>Player: <strong>${esc(o.player)}</strong> · ${o.fulfillment==="ship"?"Shipping to you":"Pickup: "+esc(o.pickup_note||"at the shop")}</p>
   <p>${o.paid?"Payment received. Thank you!":o.pay_mode==="coach"?"Your coach is collecting payment for the team.":o.pay_link?`Payment due: <a href="${esc(o.pay_link)}" target="_blank" rel="noopener">pay ${money(o.total)}</a> and use order number ${esc(o.code)}.`:"Payment due. The shop will send you a payment link."}</p>
-  ${o.closes&&o.status==="new"?`<p class="note">We print everything after the store closes on ${fmtDate(o.closes)}.</p>`:""}</div>`;
+  ${o.closes&&o.status==="new"?`<p class="note">We print everything after the store closes on ${fmtDate(o.closes)}.</p>`:""}
+  <div class="row" style="align-items:center"><button class="btn ghost sm" data-resend style="flex:0 0 auto">Email me this confirmation</button><span class="note" id="resendNote">${esc(S.lookup?.mailNote||"")}</span></div></div>`;
 }
 function bindLookup(){
   const app=$("#app");app.onclick=null;app.oninput=null;app.onchange=null;
+  app.onclick=async e=>{if(!e.target.closest("[data-resend]")||!S.lookup?.order)return;const b=e.target.closest("[data-resend]");b.disabled=true;b.textContent="Sending…";
+    let msg="Couldn't send it right now. Try again in a few minutes.";
+    try{const r=await fetch("/api/send-confirmation",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({code:S.lookup.code,email:S.lookup.email})});const j=await r.json().catch(()=>({}));
+      if(j.sent)msg="Sent! Check your inbox (and spam).";else if(j.reason==="already_sent_or_not_found")msg="We already emailed this confirmation. Check your inbox and spam folder.";}catch{}
+    S.lookup.mailNote=msg;render()};
   const f=$("#lkForm");f.onsubmit=async e=>{e.preventDefault();
     const code=$("#lk-code").value.trim().toUpperCase(),email=$("#lk-email").value.trim();S.lookup={code,email};
     if(!code||!/^\S+@\S+\.\S+$/.test(email)){S.lookup.err="Enter your order number and the email you ordered with.";render();return}
